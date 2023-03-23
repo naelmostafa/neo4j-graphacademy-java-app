@@ -1,13 +1,10 @@
 package neoflix.services;
 
 import neoflix.AppUtils;
-import neoflix.NeoflixApp;
 import neoflix.Params;
 import org.neo4j.driver.Driver;
 import org.neo4j.driver.TransactionContext;
-import org.neo4j.driver.Value;
 import org.neo4j.driver.Values;
-
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,23 +44,28 @@ public class MovieService {
      */
     // tag::all[]
     public List<Map<String, Object>> all(Params params, String userId) {
-        // TODO: Open an Session
-        // TODO: Execute a query in a new Read Transaction
-        // TODO: Get a list of Movies from the Result
-        // TODO: Close the session
+        // : Open an Session
+        // : Execute a query in a new Read Transaction
+        // : Get a list of Movies from the Result
+        // : Close the session
 
-        try (var session = driver.session()) {
+        try (var session = this.driver.session()) {
             var movies = session.executeRead(transaction -> {
+                var favorites = getUserFavorites(transaction, userId);
                 Params.Sort sort = params.sort(Params.Sort.title);
                 String query = String.format("""
                         MATCH (m:Movie)
                         WHERE m.`%s` IS NOT NULL
-                        RETURN  m{.*} AS movie
+                        RETURN m {
+                          .*,
+                          favorite: m.tmdbId IN $favorites
+                        } AS movie
                         ORDER BY m.`%s` %s
                         SKIP $skip
                         LIMIT $limit
                         """, sort, sort, params.order());
-                var result = transaction.run(query, Values.parameters("skip", params.skip(), "limit", params.limit()));
+                var result = transaction.run(query,
+                        Values.parameters("skip", params.skip(), "limit", params.limit(), "favorites", favorites));
                 return result.list(row -> row.get("movie").asMap());
             });
             return movies;
@@ -230,7 +232,14 @@ public class MovieService {
      */
     // tag::getUserFavorites[]
     private List<String> getUserFavorites(TransactionContext tx, String userId) {
-        return List.of();
+        if (userId == null)
+            return List.of();
+        var favoriteResult = tx.run("""
+                    MATCH (u:User {userId: $userId})-[:HAS_FAVORITE]->(m)
+                    RETURN m.tmdbId AS id
+                """, Values.parameters("userId", userId));
+        // Extract the `id` value returned by the cypher query
+        return favoriteResult.list(row -> row.get("id").asString());
     }
     // end::getUserFavorites[]
 
