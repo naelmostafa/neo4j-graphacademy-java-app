@@ -7,6 +7,8 @@ import neoflix.ValidationException;
 import org.neo4j.driver.Driver;
 import org.neo4j.driver.Values;
 import org.neo4j.driver.exceptions.ClientException;
+import org.neo4j.driver.exceptions.NoSuchRecordException;
+
 import java.util.List;
 import java.util.Map;
 
@@ -99,19 +101,28 @@ public class AuthService {
     // tag::authenticate[]
     public Map<String, Object> authenticate(String email, String plainPassword) {
         // TODO: Authenticate the user from the database
-        var foundUser = users.stream().filter(u -> u.get("email").equals(email)).findAny();
-        if (foundUser.isEmpty())
+        try (var session = this.driver.session()) {
+            var user = session.executeRead(transaction -> {
+                String query = """
+                        MATCH (u:User {email: $email})
+                        RETURN u{.userId, .name, .email, .password} as user
+                        """;
+                var result = transaction.run(query, Values.parameters("email", email));
+                return result.single().get("user").asMap();
+            });
+            var encrypted = user.get("password").toString();
+            if (!AuthUtils.verifyPassword(plainPassword, encrypted)) {
+                throw new ValidationException("Incorrect password",
+                        Map.of("email", "Incorrect email"));
+            }
+            // tag::return[]
+            String sub = (String) user.get("userId");
+            String token = AuthUtils.sign(sub, userToClaims(user), jwtSecret);
+            return userWithToken(user, token);
+            // end::return[]
+        } catch (NoSuchRecordException e) {
             throw new ValidationException("Incorrect email", Map.of("email", "Incorrect email"));
-        var user = foundUser.get();
-        if (!plainPassword.equals(user.get("password")) &&
-                !AuthUtils.verifyPassword(plainPassword, (String) user.get("password"))) { //
-            throw new ValidationException("Incorrect password", Map.of("password", "Incorrect password"));
         }
-        // tag::return[]
-        String sub = (String) user.get("userId");
-        String token = AuthUtils.sign(sub, userToClaims(user), jwtSecret);
-        return userWithToken(user, token);
-        // end::return[]
     }
     // end::authenticate[]
 
