@@ -16,7 +16,7 @@ class _04_ConstraintErrorTest {
     private static Driver driver;
     private static String jwtSecret;
 
-    private static final String email = UUID.randomUUID() +"@neo4j.com";
+    private static final String email = UUID.randomUUID() + "@neo4j.com";
     private static final String password = UUID.randomUUID().toString();
     private static final String name = "Graph Academy";
 
@@ -30,14 +30,17 @@ class _04_ConstraintErrorTest {
     @AfterAll
     static void closeDriver() {
         if (driver != null) {
-            driver.session().executeWrite(tx -> tx.run("MATCH (u:User {email: $email}) DETACH DELETE u", Values.parameters("email", email)));
+            driver.session().executeWrite(
+                    tx -> tx.run("MATCH (u:User {email: $email}) DETACH DELETE u", Values.parameters("email", email)));
             driver.close();
         }
     }
 
     /*
-     * If this error fails, try running the following query in your Sandbox to create the unique constraint
-     *   CREATE CONSTRAINT UserEmailUnique ON ( user:User ) ASSERT (user.email) IS UNIQUE
+     * If this error fails, try running the following query in your Sandbox to
+     * create the unique constraint
+     * CREATE CONSTRAINT UserEmailUnique ON ( user:User ) ASSERT (user.email) IS
+     * UNIQUE
      */
     @Test
     void findUniqueConstraint() {
@@ -45,9 +48,9 @@ class _04_ConstraintErrorTest {
         try (var session = driver.session()) {
             session.executeRead(tx -> {
                 var constraint = tx.run("""
-                        CALL db.constraints()
-                        YIELD name, description
-                        WHERE description = 'CONSTRAINT ON ( user:User ) ASSERT (user.email) IS UNIQUE'
+                        SHOW CONSTRAINTS
+                        YIELD name, type, properties, labelsOrTypes
+                        WHERE type = 'UNIQUENESS' AND labelsOrTypes = ['User'] AND properties = ['email']
                         RETURN *
                         """);
                 assertNotNull(constraint);
@@ -68,7 +71,7 @@ class _04_ConstraintErrorTest {
         assertNotNull(output.get("userId"), "userId property generated");
         assertNull(output.get("password"), "no password returned");
 
-        //Retry with same credentials
+        // Retry with same credentials
         try {
             authService.register(email, password, name);
             fail("Retry should fail");
